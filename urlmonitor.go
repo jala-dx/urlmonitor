@@ -12,7 +12,6 @@ import (
 	"log"
 	"time"
 	"os"
-	// "sync"
 	"encoding/json"
 	"net/http"
 
@@ -34,18 +33,22 @@ type ExternalUrl struct {
 
 }
 
+/*
+ * Monitor struct implements MonitorIfc interface
+ */
 type Monitor struct {
     Cfg    *Config
     Client *http.Client
 }
 
 type MonitorIfc interface {
-    StartMonitor()
     GetCurrentMetrics()
-    StopMonitor()
 }
 
 
+/* 
+ * GetCurrentMetrics queries the external URLs and responds with the Prometheus output format
+ */
 func (m *Monitor) GetCurrentMetrics() string{
 
 	respStr := ""
@@ -81,47 +84,9 @@ func (m *Monitor) GetCurrentMetrics() string{
 
 }
 
-func (m *Monitor) StartMonitor() {
-
-	go func() {
-		for {
-			for _, v := range m.Cfg.ExternalUrls {
-				fmt.Println("==============", v.Host)
-				resp, err := m.Client.Get(v.Host)
-				if err != nil {
-					log.Println(err)
-					return
-				}
-
-				htmlData, err := ioutil.ReadAll(resp.Body)
-				if err != nil {
-					fmt.Println(err)
-					return
-				}
-				defer resp.Body.Close()
-				fmt.Printf("%v\n", resp.Status)
-				fmt.Printf(string(htmlData))
-			}
-		}
-	}()
-
-
-}
-
-func (m *Monitor) StopMonitor() {
-
-}
-
-func MonitorEP(m MonitorIfc) {
-
-	// Not needed yet, for future
-	//m.StartMonitor()
-
-	// Not needed yet, for future
-	m.StopMonitor()
-
-}
-
+/*
+ * ParseConfig parses the json config file and picks the URLs to be monitored
+ */
 func ParseConfig() (error, *Config) {
 
 	jsonFile, err := os.Open("/tmp/config.json")
@@ -142,22 +107,9 @@ func ParseConfig() (error, *Config) {
 	
 
 }
-
-
-/* Sample Scrape
-
-# HELP promhttp_metric_handler_requests_total Total number of scrapes by HTTP status code.
-# TYPE promhttp_metric_handler_requests_total counter
-promhttp_metric_handler_requests_total{code="200"} 12720
-promhttp_metric_handler_requests_total{code="500"} 0
-promhttp_metric_handler_requests_total{code="503"} 0
-
-
-# HELP myapp_processed_ops_total The total number of processed events
-# TYPE myapp_processed_ops_total counter
-myapp_processed_ops_total 2240
-*/
-
+/*
+ * Builds the Prometheus format output if the query hits /metrics
+ */
 func BuildResponse(url string, status int, d time.Duration) string {
 
 	connStr := fmt.Sprintf("# HELP external_url_up Connectivity status of an endpoint url." + "\n" + 
@@ -173,8 +125,6 @@ func BuildResponse(url string, status int, d time.Duration) string {
 }
 
 func main() {
-	// TODO fix the log file
-	log.SetFlags(log.Lshortfile)
 
         err, cfg := ParseConfig()
 	if err != nil {
@@ -189,12 +139,10 @@ func main() {
 			},
 			Proxy: http.ProxyFromEnvironment,
 		},
-		// TODO make it configurable
 		Timeout: 5  * time.Second,
 	}
 
 	m := &Monitor{cfg, client}
-	//MonitorEP(m)
 
         http.HandleFunc("/metrics", MetricsHandler(m))
         http.ListenAndServe(":2112", nil)
@@ -214,9 +162,6 @@ func MetricsHandler(m *Monitor) http.HandlerFunc {
 		}
 		switch r.Method {
 			case "GET": 
-				//w.Write([]byte("Received a GET request\n"))
-				//resp := BuildResponse("http://jalaja.com", 1)
-				//w.Write([]byte(resp))
 				mResp := m.GetCurrentMetrics()
 				w.Write([]byte(mResp))
 			default:
