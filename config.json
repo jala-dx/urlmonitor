@@ -1,0 +1,9 @@
+{
+
+  "address": "0.0.0.0:7979",
+  "logfile": "/tmp/epmon.log",
+  "externalurls": [{"host": "https://httpstat.us/503", "type": "https"}, 
+                   {"host": "https://httpstat.us/200", "type": "https"},
+                   {"host": "http://golangcode.com/robots.txt", "type": "http"}]
+
+}
