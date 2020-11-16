@@ -60,12 +60,15 @@ func (m *Monitor) GetCurrentMetrics() string{
 		elapsed := end.Sub(start)
 		if err != nil {
 			log.Println(err)
+			// Return connectivity unreached on failure cases
+			respStr = respStr + BuildResponse(v.Host, 0, elapsed)
 			return respStr
 		}
 
 		htmlData, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Println(err)
+			respStr = respStr + BuildResponse(v.Host, 0, elapsed)
 			return respStr
 		}
 		defer resp.Body.Close()

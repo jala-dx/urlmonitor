@@ -3,13 +3,9 @@ Simple URL Monitor to check the connectivity of external endpoints.
 This service listens on port 2112 at /metrics prefix
 
 ### How to deploy
-- Refer to the docker image at do https://hub.docker.com/repository/docker/jalaja/urlimg
-  - docker pull jalaja/urlimg:1.0
 - Copy the Podspec (an easy environment can be kind)
-   - kind create cluster
-   - kubectl cluster-info --context kind-kin
    - kubectly apply -f urlmonitor_k8.yaml
-- Docker pull prometheus images
+- Have the Prometheus config point to the urlmonitor ep in the yaml file
 
 
 
