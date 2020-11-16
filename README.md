@@ -49,7 +49,7 @@ root@urlmonitor-76d599cdbf-f49tq:/#
 
 ```
 
-#### Prometheus connection to the urlmonitor service
+#### Prometheus to scrape urlmonitor service
 
 
 ```bash
