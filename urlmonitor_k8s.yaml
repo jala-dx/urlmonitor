@@ -22,15 +22,24 @@ spec:
       containers:
       - name: urlmonitor
         image: jalaja/urlimg:1.0
-        command: ["/bin/urlmonitor 2>/tmp/stdout.log" ]
+        command: ["/bin/urlmonitor"]
         ports:
             - containerPort: 2112
               name: client
         readinessProbe:
             httpGet:
-              path: "/"
+              path: "/metrics"
+              port: 2112
+            initialDelaySeconds: 30
+            timeoutSeconds: 15
+        livenessProbe:
+            httpGet:
+              path: "/metrics"
               port: 2112
             initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 100000
+            timeoutSeconds: 15
 
 ---
 

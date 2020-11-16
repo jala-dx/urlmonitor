@@ -1,5 +1,5 @@
 /*
- * Implements a simple endpoint monitor.
+ * Implements a simple url monitor.
  * Refer README.md for the deployment on K8s
  */
 
@@ -7,49 +7,56 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"time"
-	"os"
-	"encoding/json"
 	"net/http"
-
+	"os"
+	"time"
 )
 
 /*
- * Config to bootstrap the ep monitor
+ * Config to bootstrap the url monitor
  */
-
 type Config struct {
-    Address           string        `json:"address"`
-    LogFile           string        `json:"logfile"`
-    ExternalUrls      []ExternalUrl `json:"externalurls"`
+	// Address to listen on
+	Address      string        `json:"address"`
+	// Logfile for stdout/debug
+	LogFile      string        `json:"logfile"`
+        //List of URLs to be monitored
+	ExternalUrls []ExternalUrl `json:"externalurls"`
 }
 
+/* 
+ * External URL to be monitored
+ */
 type ExternalUrl struct {
-   Host string     `json:"host"`
-   Type string     `json:"type"`
-
+	// Host name or IP to be monitored
+	Host string `json:"host"`
+	// http or https
+	Type string `json:"type"`
 }
 
 /*
  * Monitor struct implements MonitorIfc interface
  */
 type Monitor struct {
-    Cfg    *Config
-    Client *http.Client
+	Cfg    *Config
+	Client *http.Client
 }
 
+/*
+ * Interface for future enhancements to stop/start monitor
+ */
 type MonitorIfc interface {
-    GetCurrentMetrics()
+	GetCurrentMetrics()
 }
 
-
-/* 
+/*
  * GetCurrentMetrics queries the external URLs and responds with the Prometheus output format
  */
-func (m *Monitor) GetCurrentMetrics() string{
+func (m *Monitor) GetCurrentMetrics() string {
 
 	respStr := ""
 	for _, v := range m.Cfg.ExternalUrls {
@@ -60,12 +67,15 @@ func (m *Monitor) GetCurrentMetrics() string{
 		elapsed := end.Sub(start)
 		if err != nil {
 			log.Println(err)
+			// Return connectivity unreached on failure cases
+			respStr = respStr + BuildResponse(v.Host, 0, elapsed)
 			return respStr
 		}
 
 		htmlData, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Println(err)
+			respStr = respStr + BuildResponse(v.Host, 0, elapsed)
 			return respStr
 		}
 		defer resp.Body.Close()
@@ -74,7 +84,7 @@ func (m *Monitor) GetCurrentMetrics() string{
 		if resp.StatusCode == http.StatusOK {
 			fmt.Println("Received 200")
 			respStr = respStr + BuildResponse(v.Host, 1, elapsed)
-		}else {
+		} else {
 			fmt.Println("Received something else ")
 			respStr = respStr + BuildResponse(v.Host, 0, elapsed)
 
@@ -87,37 +97,36 @@ func (m *Monitor) GetCurrentMetrics() string{
 /*
  * ParseConfig parses the json config file and picks the URLs to be monitored
  */
-func ParseConfig() (error, *Config) {
+func ParseConfig(fileName string) (*Config, error) {
 
-	jsonFile, err := os.Open("/tmp/config.json")
+	jsonFile, err := os.Open(fileName)
 	if err != nil {
-		//TODO log
-		return err, nil
+		return nil, err
 	}
 	defer jsonFile.Close()
-	
+
 	raw, err := ioutil.ReadAll(jsonFile)
 	cfg := &Config{}
 	err = json.Unmarshal(raw, cfg)
 	if err != nil {
 		fmt.Println("Unmarshal failed", err)
-		return err, nil
+		return nil, err
 	}
-	return  nil, cfg
-	
+	return cfg, nil
 
 }
+
 /*
  * Builds the Prometheus format output if the query hits /metrics
  */
 func BuildResponse(url string, status int, d time.Duration) string {
 
-	connStr := fmt.Sprintf("# HELP external_url_up Connectivity status of an endpoint url." + "\n" + 
-                   "# TYPE external_url_up counter" + "\n" +
-                   "external_url_up{url=\"%s\"} %d\n", url, status)
-	respStr := fmt.Sprintf("# HELP external_url_response_ms Latency to reach endpoint url." + "\n" + 
-                   "# TYPE external_url_response_ms counter" + "\n" +
-                   "external_url_response_ms{url=\"%s\"} %v\n", url, d.Milliseconds())
+	connStr := fmt.Sprintf("# HELP external_url_up Connectivity status of an endpoint url."+"\n"+
+		"# TYPE external_url_up counter"+"\n"+
+		"external_url_up{url=\"%s\"} %d\n", url, status)
+	respStr := fmt.Sprintf("# HELP external_url_response_ms Latency to reach endpoint url."+"\n"+
+		"# TYPE external_url_response_ms counter"+"\n"+
+		"external_url_response_ms{url=\"%s\"} %v\n", url, d.Milliseconds())
 	result := connStr + respStr
 	fmt.Println(result)
 	return result
@@ -126,7 +135,7 @@ func BuildResponse(url string, status int, d time.Duration) string {
 
 func main() {
 
-        err, cfg := ParseConfig()
+	cfg, err := ParseConfig("/tmp/config.json")
 	if err != nil {
 		fmt.Println("ParseConfig returned error", err)
 		return
@@ -139,13 +148,13 @@ func main() {
 			},
 			Proxy: http.ProxyFromEnvironment,
 		},
-		Timeout: 5  * time.Second,
+		Timeout: 5 * time.Second,
 	}
 
 	m := &Monitor{cfg, client}
 
-        http.HandleFunc("/metrics", MetricsHandler(m))
-        http.ListenAndServe(":2112", nil)
+	http.HandleFunc("/metrics", MetricsHandler(m))
+	http.ListenAndServe(cfg.Address, nil)
 
 }
 
@@ -154,20 +163,20 @@ func main() {
  */
 func MetricsHandler(m *Monitor) http.HandlerFunc {
 
-	return func (w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Inside the Handler")
 		if r.URL.Path != "/metrics" {
 			http.NotFound(w, r)
 			return
 		}
 		switch r.Method {
-			case "GET": 
-				mResp := m.GetCurrentMetrics()
-				w.Write([]byte(mResp))
-			default:
-				w.WriteHeader(http.StatusNotImplemented)
-				v := http.StatusText(http.StatusNotImplemented) + "\n"
-				w.Write([]byte(v))
+		case "GET":
+			mResp := m.GetCurrentMetrics()
+			w.Write([]byte(mResp))
+		default:
+			w.WriteHeader(http.StatusNotImplemented)
+			v := http.StatusText(http.StatusNotImplemented) + "\n"
+			w.Write([]byte(v))
 
 		}
 	}
